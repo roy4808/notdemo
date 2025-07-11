@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, ScrollView, Text, View } from 'react-native';
+import { Alert, Button, ScrollView, Text, View } from 'react-native';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -13,24 +13,37 @@ Notifications.setNotificationHandler({
   }),
 });
 
-
 export default function App() {
   const [expoPushToken, setExpoPushToken] = useState<string>('');
   const [notification, setNotification] = useState<Notifications.Notification | null>(null);
-  const notificationListener = useRef<any>(null);
-  const responseListener = useRef<any>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => {
-      if (token) setExpoPushToken(token);
-    });
+    // Try to get the Expo push token
+    registerForPushNotificationsAsync()
+      .then(token => {
+        if (token) {
+          setExpoPushToken(token);
+          console.log('Expo Push Token:', token);
+        } else {
+          setErrorMessage('Could not get push token. Check permissions or device.');
+        }
+      })
+      .catch(err => {
+        console.error('Error getting push token:', err);
+        setErrorMessage('Error: ' + err?.message);
+      });
 
+    // Listen for notifications received in foreground
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
       setNotification(notification);
     });
 
+    // Listen for when the user taps a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log(response);
+      console.log('Notification Response:', response);
     });
 
     return () => {
@@ -46,9 +59,15 @@ export default function App() {
   return (
     <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
       <Text style={{ fontSize: 22, marginBottom: 10 }}>Push Notification Demo</Text>
-      
-      <Text>Your Expo Push Token:</Text>
-      <Text selectable style={{ marginVertical: 10 }}>{expoPushToken}</Text>
+
+      <Text style={{ marginBottom: 10 }}>Your Expo Push Token:</Text>
+      {expoPushToken ? (
+        <Text selectable style={{ marginBottom: 20 }}>{expoPushToken}</Text>
+      ) : errorMessage ? (
+        <Text style={{ color: 'red', marginBottom: 20 }}>{errorMessage}</Text>
+      ) : (
+        <Text style={{ marginBottom: 20 }}>Fetching token...</Text>
+      )}
 
       <Button
         title="Trigger Local Notification"
@@ -76,7 +95,8 @@ export default function App() {
 
 async function registerForPushNotificationsAsync(): Promise<string | undefined> {
   if (!Constants.isDevice) {
-    alert('Must use physical device for Push Notifications');
+    Alert.alert('Error', 'Must use physical device for Push Notifications');
+    console.log('Not a physical device');
     return;
   }
 
@@ -89,10 +109,12 @@ async function registerForPushNotificationsAsync(): Promise<string | undefined> 
   }
 
   if (finalStatus !== 'granted') {
-    alert('Failed to get push token!');
+    Alert.alert('Error', 'Failed to get push token for push notifications!');
+    console.log('Permissions not granted');
     return;
   }
 
   const tokenData = await Notifications.getExpoPushTokenAsync();
+  console.log('Got Expo Push Token:', tokenData.data);
   return tokenData.data;
 }
